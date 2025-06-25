@@ -17,6 +17,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.MongoDBContainer;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+
 import static dym.filestorage.api.common.Visibility.PRIVATE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -27,12 +32,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class FileControllerIntegrationTest {
 
+    private static final String TEST_UPLOADS = "./target/test-uploads";
+
     static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:8");
 
     @DynamicPropertySource
     static void setProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.mongodb.uri", mongoDBContainer::getReplicaSetUrl);
-        registry.add("uploads.local", () -> "./target/test-uploads");
+        registry.add("storage.local", () -> TEST_UPLOADS);
         registry.add("downloads.base-url", () -> "");
     }
 
@@ -53,8 +60,22 @@ class FileControllerIntegrationTest {
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws IOException {
         fileMetadataRepository.deleteAll();
+        deletePath(Path.of(TEST_UPLOADS));
+    }
+
+    private void deletePath(Path path) throws IOException {
+        try (var files = Files.walk(path)) {
+            files.sorted(Comparator.reverseOrder())
+                    .forEach(path1 -> {
+                        try {
+                            Files.deleteIfExists(path1);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        }
     }
 
     @Test
