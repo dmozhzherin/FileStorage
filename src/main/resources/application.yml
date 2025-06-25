@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: file-storage-service
+
+  threads:
+    virtual:
+      enabled: true
+
+  servlet:
+    multipart:
+      enabled: false
+
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      database: file-storage-db
+      auto-index-creation: true
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+uploads:
+  local: /app/data
+
+downloads:
+  base-url: http://localhost:8080/api/files/
+
+logging:
+  level:
+    root: INFO
+    dym: DEBUG
+
+
+
+

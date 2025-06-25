@@ -1,0 +1,40 @@
+version: '3.8'
+
+name: File-storage
+
+services:
+  mongodb:
+    image: mongo:8
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand({ping: 1})" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: file-storage-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/filestorage
+      SPRING_DATA_MONGODB_DATABASE: filestorage
+      LOCAL_FILE_STORAGE_ROOT: /app/data
+    volumes:
+      - file_storage:/app/data
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+volumes:
+  mongodb_data:
+  file_storage:
+    driver: local
