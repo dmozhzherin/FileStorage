@@ -1,10 +1,9 @@
 package dym.filestorage.api.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import dym.filestorage.api.dto.UploadRequest;
+import com.jayway.jsonpath.JsonPath;
 import dym.filestorage.api.persistance.entity.FileMetadata;
 import dym.filestorage.api.persistance.repository.FileMetadataRepository;
-import dym.filestorage.api.service.FileService;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -18,13 +17,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.MongoDBContainer;
 
-import java.util.Set;
-
 import static dym.filestorage.api.common.Visibility.PRIVATE;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -35,6 +32,8 @@ class FileControllerIntegrationTest {
     @DynamicPropertySource
     static void setProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.mongodb.uri", mongoDBContainer::getReplicaSetUrl);
+        registry.add("uploads.local", () -> "./target/test-uploads");
+        registry.add("downloads.base-url", () -> "");
     }
 
     @Autowired
@@ -43,12 +42,14 @@ class FileControllerIntegrationTest {
     @Autowired
     private FileMetadataRepository fileMetadataRepository;
 
-    @Autowired
-    private ObjectMapper objectMapper;
-
     @BeforeAll
-    static void beforeAll() {
+    public static void beforeAll() {
         mongoDBContainer.start();
+    }
+
+    @AfterAll
+    public static void afterAll() {
+        mongoDBContainer.stop();
     }
 
     @AfterEach
@@ -94,29 +95,68 @@ class FileControllerIntegrationTest {
                 .param("fileName", "invalid file..name")
         ).andExpect(status().isBadRequest());
 
+        mockMvc.perform(post("/files")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .content("some content")
+                .param("fileName", "valid file.name")
+        ).andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/files")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .content("some content")
+                .param("userId", "validUserId")
+                .param("fileName", "valid file.name")
+                .param("visibility", "INVALID")
+        ).andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/files")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .content("some content")
+                .param("userId", "validUserId")
+                .param("fileName", "valid file.name")
+                .param("tags", "invalid,number,of,tags,exceeding,max")
+        ).andExpect(status().isBadRequest());
+
         assertThat(fileMetadataRepository.findAll()).isEmpty();
     }
 
     @Test
-    void uploadFileStream_shouldReturnInternalServerError_whenUnexpectedErrorOccurs() throws Exception {
-        UploadRequest uploadRequest = new UploadRequest(
-                "validUserId",
-                "testFile.txt",
-                "PUBLIC",
-                Set.of("tag1", "tag2")
-        );
+    void downloadFile_shouldReturn404_whenWrongUser() throws Exception {
+        var response = mockMvc.perform(post("/files")
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                        .content("test content")
+                        .param("userId", "owner")
+                        .param("fileName", "private.txt"))
+                .andExpect(status().isCreated())
+                .andReturn();
 
-        MockHttpServletRequest mockHttpServletRequest = new MockHttpServletRequest();
-        mockHttpServletRequest.setContent("Test content".getBytes());
-        mockHttpServletRequest.setContentType(MediaType.TEXT_PLAIN_VALUE);
-        mockHttpServletRequest.setAttribute(FileService.class.getName(), null);
+        var fileId = JsonPath.read(response.getResponse().getContentAsString(), "$.url");
 
-        mockMvc.perform(post("/files")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(uploadRequest))
-                        .requestAttr(MockHttpServletRequest.class.getName(), mockHttpServletRequest))
-                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/files/{id}", fileId)
+                        .param("userId", "other-user"))
+                .andExpect(status().isNotFound());
 
-        assertThat(fileMetadataRepository.findAll()).isEmpty();
+        mockMvc.perform(get("/files/{id}", fileId)
+                        .param("userId", "owner"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void downloadFile_shouldReturnSuccess_whenPublicFile() throws Exception {
+        var response = mockMvc.perform(post("/files")
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                        .content("test content")
+                        .param("userId", "owner")
+                        .param("visibility", "public")
+                        .param("fileName", "public.txt"))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        var fileId = JsonPath.read(response.getResponse().getContentAsString(), "$.url");
+
+        mockMvc.perform(get("/files/{id}", fileId)
+                        .param("userId", "other user"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("test content"));
     }
 }

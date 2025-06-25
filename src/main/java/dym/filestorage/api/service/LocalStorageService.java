@@ -18,7 +18,7 @@ public class LocalStorageService implements FileStorageService {
 
     private final Path fileStorageLocation;
 
-    public LocalStorageService(@Value("${uploads.local}") String uploadDir) throws IOException {
+    public LocalStorageService(@Value("${storage.local}") String uploadDir) throws IOException {
         this.fileStorageLocation = Paths.get(uploadDir).toAbsolutePath().normalize();
         Files.createDirectories(this.fileStorageLocation);
     }

@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.util.Pair;
@@ -25,8 +26,11 @@ import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
+@Slf4j
 @Valid
 @RestController
 @RequiredArgsConstructor
@@ -51,6 +55,7 @@ public class FileController {
             UploadResponse response = new UploadResponse(
                     metadata.getFileName(),
                     metadata.getContentType(),
+                    metadata.getVisibility(),
                     metadata.getSize(),
                     Instant.ofEpochMilli(metadata.getUploadDate()),
                     uri.toString()
@@ -71,10 +76,10 @@ public class FileController {
     }
 
     @GetMapping(path = "/tags", produces = MediaType.APPLICATION_JSON_VALUE)
-    public List<String> listTags(
+    public Map<String, List<String>> listTags(
             @NotBlank(message = "UserId required!")
             @RequestParam(value = "userId", required = false) String userId) {
-        return fileService.getAccessibleTags(userId);
+        return Collections.singletonMap("tags", fileService.getAccessibleTags(userId));
     }
 
     @GetMapping("/{inStorageId}")
@@ -93,11 +98,9 @@ public class FileController {
                     .contentLength(metadata.getSize())
                     .contentType(MediaType.parseMediaType(metadata.getContentType()))
                     .body(new InputStreamResource(file.getSecond()));
-
-        } catch (FileNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
-        } catch (SecurityException e) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage(), e);
+        } catch (FileNotFoundException | SecurityException e) {
+            log.error("File download failed for user: " + userId, e);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found", e);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to download file.", e);
         }
@@ -110,11 +113,10 @@ public class FileController {
         try {
             fileService.deleteFile(inStorageId, userId);
             return ResponseEntity.noContent().build();
-        } catch (FileNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
-        } catch (SecurityException e) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage(), e);
-        } catch (Exception e) {
+        } catch (FileNotFoundException | SecurityException e) {
+            log.error("File deletion failed for user: " + userId, e);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found", e);
+        } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete file: " + e.getMessage(), e);
         }
     }

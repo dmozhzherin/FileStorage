@@ -148,7 +148,7 @@ public class FileService {
         return Pair.of(metadata, fileStorageService.loadFile(fileKeyFrom(metadata)));
     }
 
-    public void deleteFile(String inStorageId, String userId) throws Exception {
+    public void deleteFile(String inStorageId, String userId) throws IOException {
         FileMetadata metadata = getFileMetadata(inStorageId, userId);
 
         fileStorageService.deleteFile(fileKeyFrom(metadata));

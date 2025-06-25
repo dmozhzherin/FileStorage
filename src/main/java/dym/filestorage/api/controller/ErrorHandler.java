@@ -16,6 +16,7 @@ public class ErrorHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ProblemDetail> handleApiException(ApiException e) {
+        log.error("API exception occurred", e);
         return ResponseEntity.of(ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage())).build();
     }
 
@@ -27,7 +28,7 @@ public class ErrorHandler {
                         e.getBindingResult().getAllErrors().stream()
                                 .map(DefaultMessageSourceResolvable::getDefaultMessage)
                                 .reduce((msg1, msg2) -> msg1 + "; " + msg2)
-                                .orElse("Invalid input")
+                                .orElse("Invalid request parameters")
                 )
         ).build();
     }

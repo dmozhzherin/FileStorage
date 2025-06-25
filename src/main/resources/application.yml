@@ -22,8 +22,9 @@ server:
   servlet:
     context-path: /api
 
-uploads:
+storage:
   local: /app/data
+  autocreate: true
 
 downloads:
   base-url: http://localhost:8080/api/files/
